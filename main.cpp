@@ -1,9 +1,10 @@
 #include <SFML/Graphics.hpp>
+#include <SFML/System.hpp>
 #include <iostream>
 #include <queue>
 #include <vector>
 #include <cmath>
-
+#include <set>
 #include <stack>
 
 #include <cstdlib>
@@ -28,6 +29,16 @@ struct Cell {
     bool bottomWall;
     bool leftWall;
 
+    // for A*
+    float f = 0; // total cost (g + h]
+    float g = 0; // costy from start
+    float h = 0; // heuristic
+    Cell* parent;
+
+    // for A* visualization
+    bool inPath;
+    bool explored;
+
     // default constructor
     Cell()
         : x(0)
@@ -37,6 +48,13 @@ struct Cell {
         , rightWall(true)
         , bottomWall(true)
         , leftWall(true)
+        
+        , f(0)
+        , g(0)
+        , h(0)
+        , parent(nullptr)
+        , inPath(false)
+        , explored(false)
     {
     }
 
@@ -49,6 +67,13 @@ struct Cell {
         , rightWall(true)
         , bottomWall(true)
         , leftWall(true)
+
+        , f(0)
+        , g(0)
+        , h(0)
+        , parent(nullptr)
+        , inPath(false)
+        , explored(false)
     {}
 
     void draw(sf::RenderWindow& window) {
@@ -58,6 +83,27 @@ struct Cell {
             tile.setPosition(x * TILE_SIZE, y * TILE_SIZE);
             tile.setSize(sf::Vector2f(TILE_SIZE, TILE_SIZE));
             tile.setFillColor(sf::Color::Black);
+            window.draw(tile);
+        }
+
+      // for A* search 
+        if (explored) {
+
+            sf::RectangleShape tile;
+            tile.setPosition(x * TILE_SIZE, y * TILE_SIZE);
+            tile.setSize(sf::Vector2f(TILE_SIZE, TILE_SIZE));
+            tile.setFillColor(sf::Color::Blue);
+            window.draw(tile);
+
+        }
+
+        // for A* search
+        if (inPath) {
+            
+            sf::RectangleShape tile;
+            tile.setPosition(x * TILE_SIZE, y * TILE_SIZE);
+            tile.setSize(sf::Vector2f(TILE_SIZE, TILE_SIZE));
+            tile.setFillColor(sf::Color::Green);
             window.draw(tile);
         }
 
@@ -97,8 +143,7 @@ struct Cell {
         window.draw(tile);
         
     }
-    
-   // Check if a cell position is valid within the grid
+
    bool isValid(int x, int y) {
        
        if (x < 0 or x > cols - 1 or y < 0 or y > rows - 1) {
@@ -108,7 +153,6 @@ struct Cell {
        
     }
 
-   // available unvisited neighbors
    vector<Cell*> getUnvisitedNeighbors(vector<vector<Cell>>& grid) {
        vector<Cell*>  neighbors;
 
@@ -120,7 +164,7 @@ struct Cell {
            int newX = x + dx[i];
            int newY = y + dy[i];
 
-           // Check if the neighbor is valid and unvisited
+           // check if the neighbor is valid and unvisited
            if (isValid(newX, newY) && !grid[newX][newY].visited) {
                neighbors.push_back(&grid[newX][newY]);
            }
@@ -165,8 +209,103 @@ struct Cell {
    }
 
 
+   vector<Cell*> getValidNeighborsForPath(vector<vector<Cell>>& grid) {
+       vector<Cell*> neighbors;
+
+
+       if (!topWall && isValid(x, y - 1)) {
+           neighbors.push_back(&grid[x][y - 1]);
+       }
+       if (!rightWall && isValid(x + 1, y)) {
+           neighbors.push_back(&grid[x + 1][y]);
+       }
+       if (!bottomWall && isValid(x, y + 1)) {
+           neighbors.push_back(&grid[x][y + 1]);
+       }
+       if (!leftWall && isValid(x - 1, y)) {
+           neighbors.push_back(&grid[x - 1][y]);
+       }
+
+       return neighbors;
+   }
+
+
 };
 
+float heuristic(const Cell& a, const Cell& b) {
+    return abs(a.x - b.x) + abs(a.y - b.y);
+}
+
+
+struct CompareCells {
+    bool operator()(Cell* a, Cell* b) const {
+        return (a->f < b->f) || (a->f == b->f && a < b);
+    }
+};
+
+
+void astarSearch(vector<vector<Cell>>& grid, Cell* start, Cell* goal, sf::RenderWindow& window) {
+    
+
+    set<Cell*> closedSet;
+    std::set<Cell*, CompareCells> openSet;
+
+    openSet.insert(start);
+
+    while (!openSet.empty()) {
+        Cell* current = *openSet.begin();
+
+  
+
+        openSet.erase(openSet.begin());
+
+        if (current == goal) {
+            Cell* temp = current;
+            while (temp != nullptr) {
+                temp->inPath = true;
+                temp = temp->parent;
+            }
+            return;
+        }
+
+        closedSet.insert(current);
+        current->explored = true;
+
+        vector<Cell*> neighbors = current->getValidNeighborsForPath(grid);
+        for (Cell* neighbor : neighbors) {
+            float tentative_g = current->g + 1;
+            if (closedSet.find(neighbor) != closedSet.end() ||
+                (openSet.find(neighbor) != openSet.end() && tentative_g >= neighbor->g)) {
+                continue;
+            }
+
+            neighbor->parent = current;
+            neighbor->g = tentative_g;
+            neighbor->h = heuristic(*neighbor, *goal);
+            neighbor->f = neighbor->g + neighbor->h;
+
+            openSet.erase(neighbor); 
+            openSet.insert(neighbor); 
+        }
+    
+
+        window.clear(sf::Color::White);
+
+   
+
+        for (int i = 0; i < cols; i++) {
+            for (int j = 0; j < rows; j++) {
+                grid[i][j].draw(window);
+            }
+        }
+
+       // current->drawCurrentCell(window);
+      
+
+        window.display();
+        sf::sleep(sf::milliseconds(10));
+    }
+}
 
 
 
@@ -182,6 +321,8 @@ int main() {
     vector<vector<Cell>> grid(cols, vector<Cell>(rows));
     vector<Cell*> stack;
     Cell* current_cell = &grid[0][0];
+
+    bool mazeGenerated = false;
     
 
     // each cell intialized with its coordinates
@@ -198,35 +339,63 @@ int main() {
                 window.close();
         }
 
-        window.clear(sf::Color::White);  
+        window.clear(sf::Color::White);
 
-        //Maze Generation using DFS backtracking algorithm
-        // -----------------------------------------------------------------------
-        // Draw all cells
+    
         for (int i = 0; i < cols; i++) {
             for (int j = 0; j < rows; j++) {
                 grid[i][j].draw(window);
             }
         }
-        current_cell->visited = true;
-        current_cell->drawCurrentCell(window);
 
-        Cell* next_cell = current_cell->getRandomUnvisitedNeighbor(grid);
-        if (next_cell->isValid(next_cell->x, next_cell->y)) {
-            next_cell->visited = true;
-            stack.push_back(current_cell);
-            current_cell->removeWallsBetween(*next_cell);
-            current_cell = next_cell;
-        }
-        else if(!stack.empty()){
-            current_cell = stack.back();
-            stack.pop_back();
-        }
+        // maze Generation using DFS backtracking algorithm
+        //--------------------------------------------------------------------
+        while (!mazeGenerated) {
+            window.clear(sf::Color::White);
 
+      
+            for (int i = 0; i < cols; i++) {
+                for (int j = 0; j < rows; j++) {
+                    grid[i][j].draw(window);
+                }
+            }
+
+            current_cell->visited = true;
+            current_cell->drawCurrentCell(window);
+
+            sf::sleep(sf::seconds(0.01));
+
+            Cell* next_cell = current_cell->getRandomUnvisitedNeighbor(grid);
+            if (next_cell->isValid(next_cell->x, next_cell->y)) {
+                next_cell->visited = true;
+                stack.push_back(current_cell);
+                current_cell->removeWallsBetween(*next_cell);
+                current_cell = next_cell;
+            }
+            else if (!stack.empty()) {
+                current_cell = stack.back();
+                stack.pop_back();
+            }
+            else {
+                mazeGenerated = true;
+
+            }
+            window.display();
+        }
         // ----------------------------------------------------------------------------
+   
+        // start A* pathfinding
+        Cell* start = &grid[0][0];
+        Cell* goal = &grid[19][19];
+        astarSearch(grid, start, goal, window);
+        astarSearch(grid, start, goal, window);
+        astarSearch(grid, start, goal, window);
+        
+          
 
-        window.display();  // display the drawn frame
+        window.display();  
     }
+
 
     return 0;
 };
