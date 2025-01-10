@@ -388,8 +388,7 @@ int main() {
         Cell* start = &grid[0][0];
         Cell* goal = &grid[19][19];
         astarSearch(grid, start, goal, window);
-        astarSearch(grid, start, goal, window);
-        astarSearch(grid, start, goal, window);
+      
         
           
 
